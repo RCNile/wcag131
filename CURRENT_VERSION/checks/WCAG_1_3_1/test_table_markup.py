@@ -4,19 +4,13 @@ import json
 import pandas as pd
 from bs4 import BeautifulSoup
 
-"""
-WCAG 1.3.1 (c) Test for proper usage of table markup (table, th, tr, td) in the HTML.
-"""
-
 logging.basicConfig(level=logging.DEBUG)
 
-# Function to write table issues to a file
 def write_table_info(file_path, table_info, format="csv"):
     """Writes table information and issues to a file in CSV, JSON, or Excel format."""
     logging.debug(f"Writing table info to {file_path} in {format} format.")
 
     def write_csv():
-        """Writes table information to a CSV file."""
         fieldnames = ['Table Index', 'Table HTML', 'Issue', 'Confidence Percentage']
         with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -30,12 +24,10 @@ def write_table_info(file_path, table_info, format="csv"):
                 })
 
     def write_json():
-        """Writes table information to a JSON file."""
         with open(file_path, 'w', encoding='utf-8') as jsonfile:
             json.dump(table_info, jsonfile, indent=4)
 
     def write_excel():
-        """Writes table information to an Excel file."""
         rows = [
             {
                 'Table Index': table.get('Table Index', 'N/A'),
@@ -48,7 +40,6 @@ def write_table_info(file_path, table_info, format="csv"):
         df = pd.DataFrame(rows)
         df.to_excel(file_path, index=False)
 
-    # Dispatch table for format handling
     format_dispatch = {
         "csv": write_csv,
         "json": write_json,
@@ -66,33 +57,42 @@ def write_table_info(file_path, table_info, format="csv"):
         logging.error(f"Error writing table info to {file_path}: {e}")
         return False
 
-# Helper functions for validation
-validate_headers = lambda table: (
-    "Table is missing headers (th elements)."
-    if not table.find_all('th') else
-    None
-)
+# Validation Functions
+def validate_headers(table):
+    """Ensures the table has <th> headers and appropriate attributes."""
+    headers = table.find_all('th')
+    if not headers:
+        return "Table is missing <th> header cells."
+    for header in headers:
+        if not header.get('scope') and not header.get('id'):
+            return "Header cell is missing 'scope' or 'id' for association."
+    return None
 
-validate_rows = lambda table: (
-    "Table is missing rows (tr elements)."
-    if not table.find_all('tr') else
-    None
-)
+def validate_rows(table):
+    """Checks if the table contains rows (<tr>)."""
+    if not table.find_all('tr'):
+        return "Table is missing <tr> row elements."
+    return None
 
-validate_aria_role = lambda table: (
-    "Table is missing an ARIA role for accessibility."
-    if not table.get('role') and table.get('summary') is None else
-    None
-)
+def validate_aria_role(table):
+    """Validates the presence of ARIA roles or summary for accessibility."""
+    if not table.get('role') and not table.get('summary'):
+        return "Table is missing an ARIA role or a summary attribute."
+    return None
 
-# Confidence calculation function
+def validate_layout_table(table):
+    """Detects if the table is improperly used for layout purposes."""
+    if not table.find_all('th') and len(table.find_all('tr')) <= 2:
+        return "Table appears to be used for layout purposes."
+    return None
+
 def calculate_table_confidence(num_issues, num_checks):
     """Calculates confidence for the table test."""
     baseline_confidence = 95.0
     confidence_penalty = (num_issues / num_checks) * 50  # Max penalty: 50%
     return max(baseline_confidence - confidence_penalty, 0)
 
-# Main table markup test function
+# Main Function
 def test_table_markup(html):
     """Tests for proper usage of table markup (table, th, tr, td) in the HTML."""
     soup = BeautifulSoup(html, 'html.parser')
@@ -112,7 +112,8 @@ def test_table_markup(html):
             for validation_issue in [
                 validate_headers(table),
                 validate_rows(table),
-                validate_aria_role(table)
+                validate_aria_role(table),
+                validate_layout_table(table)
             ]
             if validation_issue is not None
         ]
@@ -122,7 +123,7 @@ def test_table_markup(html):
                 "Table Index": index + 1,
                 "Table HTML": str(table),
                 "Issue": " ".join(table_issues),
-                "Confidence Percentage": calculate_table_confidence(len(table_issues), 3)
+                "Confidence Percentage": calculate_table_confidence(len(table_issues), 4)
             })
             for issue in table_issues:
                 logging.warning(f"Table {index + 1} issue: {issue}")

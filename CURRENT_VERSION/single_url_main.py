@@ -3,13 +3,13 @@ import subprocess
 from openpyxl import Workbook
 from playwright.async_api import async_playwright
 import asyncio
-from checks.WCAG_1_3_1.test_blockquote_markup import test_blockquote_markup, write_blockquote_info_csv
-from checks.WCAG_1_3_1.test_form_markup import test_form_markup, write_form_info_csv
-from checks.WCAG_1_3_1.test_heading_markup import check_heading_markup, write_heading_info_csv
-from checks.WCAG_1_3_1.test_landmark_markup import test_landmark_markup, write_landmark_info_csv
-from checks.WCAG_1_3_1.test_list_markup import test_list_markup, write_list_info_csv
-from checks.WCAG_1_3_1.test_structural_markup import test_structural_markup, write_structural_info_csv
-from checks.WCAG_1_3_1.test_table_markup import test_table_markup, write_table_info_csv
+from checks.WCAG_1_3_1.test_blockquote_markup import test_blockquote_markup, write_blockquote_info
+from checks.WCAG_1_3_1.test_form_markup import test_form_markup, write_form_info
+from checks.WCAG_1_3_1.test_heading_markup import check_heading_markup, write_heading_info
+from checks.WCAG_1_3_1.test_landmark_markup import test_landmark_markup, write_landmark_info
+from checks.WCAG_1_3_1.test_list_markup import test_list_markup, write_list_info
+from checks.WCAG_1_3_1.test_structural_markup import test_structural_markup, write_structural_info
+from checks.WCAG_1_3_1.test_table_markup import test_table_markup, write_table_info
 
 
 def create_results_workbook():
@@ -55,13 +55,13 @@ def process_url(url, workbook, results_dir):
 
         # Tests and their respective functions
         tests_and_functions = {
-            "heading_markup": (check_heading_markup, write_heading_info_csv),
-            "list_markup": (test_list_markup, write_list_info_csv),
-            "table_markup": (test_table_markup, write_table_info_csv),
-            "blockquote_markup": (test_blockquote_markup, write_blockquote_info_csv),
-            "landmark_markup": (test_landmark_markup, write_landmark_info_csv),
-            "structural_markup": (test_structural_markup, write_structural_info_csv),
-            "form_markup": (test_form_markup, write_form_info_csv),
+            "heading_markup": (check_heading_markup, write_heading_info),
+            "list_markup": (test_list_markup, write_list_info),
+            "table_markup": (test_table_markup, write_table_info),
+            "blockquote_markup": (test_blockquote_markup, write_blockquote_info),
+            "landmark_markup": (test_landmark_markup, write_landmark_info),
+            "structural_markup": (test_structural_markup, write_structural_info),
+            "form_markup": (test_form_markup, write_form_info),
         }
 
         # Prepare a row for the current URL

@@ -4,6 +4,9 @@ import json
 import pandas as pd
 from bs4 import BeautifulSoup
 
+"""
+1.3.1 (a) Heading markup is used appropriately
+"""
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -53,14 +56,25 @@ def check_heading_markup(html):
             if heading_tag not in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] and not is_aria_heading:
                 continue
 
-            # Validate heading content using match-case
+            # Determine the current heading level
+            current_level = None
+            if is_aria_heading:
+                try:
+                    current_level = int(aria_level)
+                except ValueError:
+                    current_level = None
+            else:
+                current_level = int(heading_tag[1])
+
+            # Use match-case to handle heading issues
             match {
                 "is_repetitive": heading_text in seen_texts,
                 "is_aria_heading": is_aria_heading,
                 "missing_aria_level": is_aria_heading and not aria_level,
                 "invalid_aria_level": is_aria_heading and (not aria_level.isdigit() or not (1 <= int(aria_level) <= 6)),
                 "is_empty": not heading_text.strip(),
-                "semantic_heading": heading_tag.startswith('h') and heading_tag[1].isdigit()
+                "hierarchy_skip": prev_level and current_level and current_level > prev_level + 1,
+                "first_heading_invalid": prev_level == 0 and current_level != 1
             }:
                 case {"is_repetitive": True}:
                     add_issue(
@@ -94,18 +108,28 @@ def check_heading_markup(html):
                         "Heading with role='heading' is empty or not descriptive.",
                         "2.4.6"
                     )
-                case {"semantic_heading": True}:
-                    current_level = int(heading_tag[1])
-                    if prev_level and current_level - prev_level > 1:
-                        add_issue(
-                            line_number,
-                            heading_tag,
-                            heading_text,
-                            f"Skipped heading levels from <h{prev_level}> to <h{current_level}>.",
-                            "1.3.1 (a)"
-                        )
-                    prev_level = current_level
+                case {"hierarchy_skip": True}:
+                    add_issue(
+                        line_number,
+                        heading_tag,
+                        heading_text,
+                        f"Skipped heading levels from <h{prev_level}> to <h{current_level}>.",
+                        "1.3.1 (a)"
+                    )
+                case {"first_heading_invalid": True}:
+                    add_issue(
+                        line_number,
+                        heading_tag,
+                        heading_text,
+                        "The first heading should be <h1> or aria-level='1'.",
+                        "1.3.1 (a)"
+                    )
 
+            # Update previous level for hierarchy tracking
+            if current_level:
+                prev_level = current_level
+
+            # Mark this text as seen
             seen_texts.add(heading_text)
 
         # Calculate confidence score
@@ -126,6 +150,23 @@ def check_heading_markup(html):
             "confidence": 50.0,
             "issue_count": 1
         }
+
+def calculate_heading_confidence(issues, total_headings):
+    """
+    Calculates confidence score for heading compliance.
+    """
+    baseline_confidence = 95.0
+    for issue in issues:
+        if "multiple <h1>" in issue.get('Issue', '').lower():
+            baseline_confidence -= 15
+        elif "missing aria-level" in issue.get('Issue', '').lower():
+            baseline_confidence -= 10
+        elif "skipped heading levels" in issue.get('Issue', '').lower():
+            baseline_confidence -= 5
+    if total_headings > 0:
+        baseline_confidence *= (1 - len(issues) / total_headings)
+    return max(baseline_confidence, 0)
+
 
 def calculate_heading_confidence(issues, total_headings):
     """

@@ -7,13 +7,11 @@ from bs4 import BeautifulSoup
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Function to write list issues to a file
 def write_list_info(file_path, list_info, format="csv"):
     """Writes list information and issues to a file in CSV, JSON, or Excel format."""
     logging.debug(f"Writing list info to {file_path} in {format} format.")
 
     def write_csv():
-        """Writes list information to a CSV file."""
         fieldnames = ['List Index', 'List HTML', 'Issue', 'Issue Code', 'Confidence Percentage']
         with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -28,16 +26,13 @@ def write_list_info(file_path, list_info, format="csv"):
                 })
 
     def write_json():
-        """Writes list information to a JSON file."""
         with open(file_path, 'w', encoding='utf-8') as jsonfile:
             json.dump(list_info, jsonfile, indent=4)
 
     def write_excel():
-        """Writes list information to an Excel file."""
         df = pd.DataFrame(list_info)
         df.to_excel(file_path, index=False)
 
-    # Dispatch table for format handling
     format_dispatch = {
         "csv": write_csv,
         "json": write_json,
@@ -45,7 +40,6 @@ def write_list_info(file_path, list_info, format="csv"):
     }
 
     try:
-        # Execute the appropriate write function based on the format
         if format in format_dispatch:
             format_dispatch[format]()
             logging.info(f"List info successfully written to {file_path}.")
@@ -56,26 +50,48 @@ def write_list_info(file_path, list_info, format="csv"):
         logging.error(f"Error writing list info to {file_path}: {e}")
         return False
 
-# Helper functions for validation checks
-validate_list = lambda lst: (
-    "List is malformed. No <li> elements found."
-    if not lst.find_all('li') else
-    "List is missing proper ARIA roles for accessibility."
-    if lst.name not in ['ul', 'ol'] and not lst.get('role') else
-    None
-)
+# Validation Functions
+def validate_list_element(lst):
+    """Validates a list element for proper structure and semantics."""
+    if lst.name not in ['ul', 'ol']:
+        # Non-standard list elements must use ARIA roles
+        if not lst.get('role') == 'list':
+            return "Non-standard list element is missing role='list' for accessibility."
+    if not lst.find_all('li'):
+        return "List is malformed: no <li> elements found."
+    return None
 
-# Confidence calculation function
-def calculate_list_confidence(list_issues, total_lists):
+def validate_list_nesting(lst):
+    """Checks for improper nesting of lists."""
+    nested_lists = lst.find_all(['ul', 'ol'], recursive=True)
+    for nested in nested_lists:
+        if nested.find_parent(['ul', 'ol']) != lst:
+            return "Nested list is not properly contained within a parent list item."
+    return None
+
+def validate_orphan_list_items(soup):
+    """Checks for orphaned <li> elements outside a list container."""
+    orphans = soup.find_all('li', recursive=False)
+    if orphans:
+        return "Orphaned <li> elements found outside <ul> or <ol> containers."
+    return None
+
+# Confidence Calculation
+def calculate_list_confidence(issues, total_lists):
     """Calculates confidence for the list test."""
-    baseline_confidence = 95.0
-    malformed_lists = len(list_issues)
+    baseline_confidence = 100.0
+    weight_map = {
+        "malformed": 20,
+        "nested": 15,
+        "orphaned": 10,
+    }
+    for issue in issues:
+        for key, weight in weight_map.items():
+            if key in issue['Issue'].lower():
+                baseline_confidence -= weight
+    return max(baseline_confidence - (len(issues) / total_lists) * 20, 0)
 
-    # Adjust confidence based on the proportion of malformed lists
-    confidence_penalty = (malformed_lists / total_lists) * 50  # Max penalty: 50%
-    return max(baseline_confidence - confidence_penalty, 0)
-
-# Main list markup test function
+# Main Function
 def test_list_markup(html):
     """Tests for proper usage of list markup (ul, ol, li) in the HTML."""
     soup = BeautifulSoup(html, 'html.parser')
@@ -89,17 +105,40 @@ def test_list_markup(html):
     issues = []
     total_lists = len(lists)
 
+    # Check for orphaned <li> elements
+    orphan_issue = validate_orphan_list_items(soup)
+    if orphan_issue:
+        issues.append({
+            "List Index": "N/A",
+            "List HTML": "N/A",
+            "Issue": orphan_issue,
+            "Issue Code": "1.3.1 (b)"
+        })
+        logging.warning(orphan_issue)
+
+    # Validate each list element
     for index, lst in enumerate(lists):
-        # Validate the list element
-        validation_issue = validate_list(lst)
-        if validation_issue:
+        # Validate the list structure
+        list_issue = validate_list_element(lst)
+        if list_issue:
             issues.append({
                 "List Index": index + 1,
                 "List HTML": str(lst),
-                "Issue": validation_issue,
+                "Issue": list_issue,
                 "Issue Code": "1.3.1 (b)"
             })
-            logging.warning(f"List {index + 1} issue: {validation_issue}")
+            logging.warning(f"List {index + 1} issue: {list_issue}")
+
+        # Validate nested lists
+        nesting_issue = validate_list_nesting(lst)
+        if nesting_issue:
+            issues.append({
+                "List Index": index + 1,
+                "List HTML": str(lst),
+                "Issue": nesting_issue,
+                "Issue Code": "1.3.1 (b)"
+            })
+            logging.warning(f"List {index + 1} issue: {nesting_issue}")
 
     # Calculate overall confidence
     confidence = calculate_list_confidence(issues, total_lists)

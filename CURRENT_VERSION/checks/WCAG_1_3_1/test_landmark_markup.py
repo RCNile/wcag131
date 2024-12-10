@@ -7,7 +7,6 @@ from bs4 import BeautifulSoup
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Function to write landmark issues to a file
 def write_landmark_info(file_path, landmark_info, format="csv"):
     """Writes landmark information to a file in CSV, JSON, or Excel format."""
     logging.debug(f"Writing landmark info to {file_path} in {format} format.")
@@ -52,7 +51,6 @@ def write_landmark_info(file_path, landmark_info, format="csv"):
         logging.error(f"Error writing landmark info to {file_path}: {e}")
         return False
 
-# Landmark testing function
 def test_landmark_markup(html):
     """Tests for proper usage of landmark elements in the HTML."""
     soup = BeautifulSoup(html, 'html.parser')
@@ -97,27 +95,25 @@ def test_landmark_markup(html):
         "confidence": overall_confidence
     }
 
-# Check if the landmark element is empty
 def check_empty_landmark(landmark_content):
     """Checks if the landmark element is empty or lacks meaningful content."""
     if not landmark_content.strip():
         return "Landmark element is empty or has no meaningful content."
     return None
 
-# Check if the content matches the purpose of the landmark
 def check_landmark_content(landmark):
-    """Validates the content of a landmark element using match-case."""
+    """Validates the content of a landmark element based on its type."""
     tag = landmark.name
     content = landmark.get_text(strip=True)
     element_html = str(landmark)
 
     match tag:
-        case 'nav' if 'href' not in element_html:
+        case 'nav' if not landmark.find_all('a', href=True):
             return "Landmark <nav> should contain navigation links."
         case 'main' if len(content.split()) < 20:
             return "Landmark <main> should contain the primary content of the page."
-        case 'header' if 'h1' not in element_html:
-            return "Landmark <header> should include an <h1> element."
+        case 'header' if not landmark.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+            return "Landmark <header> should include a heading element (e.g., <h1>)."
         case 'footer' if len(content.split()) < 5:
             return "Landmark <footer> should contain footer information."
         case 'aside' if len(content.split()) < 10:
@@ -125,7 +121,7 @@ def check_landmark_content(landmark):
         case 'section' if len(content.split()) < 10:
             return "Landmark <section> should have a meaningful amount of content."
         case 'article' if len(content.split()) < 50:
-            return "Landmark <article> should contain self-contained detailed content."
+            return "Landmark <article> should contain self-contained, detailed content."
         case 'form' if not landmark.find(['input', 'textarea', 'select']):
             return "Landmark <form> should include input elements."
         case 'form' if not landmark.find_all('label') and not any(
@@ -135,16 +131,21 @@ def check_landmark_content(landmark):
         case _:
             return None
 
-# Calculate confidence for landmarks
 def calculate_landmark_confidence(landmark_issues, total_landmarks):
     """Calculates confidence for landmark compliance."""
-    baseline_confidence = 95.0
+    baseline_confidence = 100.0
+    weight_map = {
+        "empty": 20,
+        "should contain": 10,
+    }
+
     for issue in landmark_issues:
-        if "empty" in issue.lower():
-            baseline_confidence -= 20
-        elif "should contain" in issue.lower():
-            baseline_confidence -= 10
+        for key, weight in weight_map.items():
+            if key in issue.lower():
+                baseline_confidence -= weight
+
+    # Adjust confidence by issue density
     if total_landmarks > 0:
         baseline_confidence *= (1 - len(landmark_issues) / total_landmarks)
-    return max(baseline_confidence, 0)
 
+    return max(baseline_confidence, 0)

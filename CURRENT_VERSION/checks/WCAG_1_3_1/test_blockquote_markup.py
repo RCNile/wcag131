@@ -4,6 +4,9 @@ import json
 import pandas as pd
 from bs4 import BeautifulSoup
 
+"""
+WCAG 1.3.1 (d) Block-quote markup is used appropriately
+"""
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
