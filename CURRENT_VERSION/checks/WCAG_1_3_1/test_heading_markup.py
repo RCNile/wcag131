@@ -28,6 +28,7 @@ def check_heading_markup(html):
             }
 
         issues = []
+        has_primary_heading = False
 
         # Helper to add an issue
         def add_issue(line, tag, text, issue, code):
@@ -66,6 +67,10 @@ def check_heading_markup(html):
             else:
                 current_level = int(heading_tag[1])
 
+            # Check for a primary heading
+            if (heading_tag == 'h1' or (is_aria_heading and current_level == 1)):
+                has_primary_heading = True
+
             # Use match-case to handle heading issues
             match {
                 "is_repetitive": heading_text in seen_texts,
@@ -73,8 +78,7 @@ def check_heading_markup(html):
                 "missing_aria_level": is_aria_heading and not aria_level,
                 "invalid_aria_level": is_aria_heading and (not aria_level.isdigit() or not (1 <= int(aria_level) <= 6)),
                 "is_empty": not heading_text.strip(),
-                "hierarchy_skip": prev_level and current_level and current_level > prev_level + 1,
-                "first_heading_invalid": prev_level == 0 and current_level != 1
+                "hierarchy_skip": prev_level and current_level and current_level > prev_level + 1
             }:
                 case {"is_repetitive": True}:
                     add_issue(
@@ -116,14 +120,6 @@ def check_heading_markup(html):
                         f"Skipped heading levels from <h{prev_level}> to <h{current_level}>.",
                         "1.3.1 (a)"
                     )
-                case {"first_heading_invalid": True}:
-                    add_issue(
-                        line_number,
-                        heading_tag,
-                        heading_text,
-                        "The first heading should be <h1> or aria-level='1'.",
-                        "1.3.1 (a)"
-                    )
 
             # Update previous level for hierarchy tracking
             if current_level:
@@ -131,6 +127,16 @@ def check_heading_markup(html):
 
             # Mark this text as seen
             seen_texts.add(heading_text)
+
+        # Add issue if no primary heading is found
+        if not has_primary_heading:
+            add_issue(
+                "N/A",
+                "N/A",
+                "N/A",
+                "No primary heading (e.g., <h1> or aria-level='1') found in the document.",
+                "1.3.1 (a)"
+            )
 
         # Calculate confidence score
         confidence = calculate_heading_confidence(issues, len(headings))
@@ -150,6 +156,7 @@ def check_heading_markup(html):
             "confidence": 50.0,
             "issue_count": 1
         }
+
 
 def calculate_heading_confidence(issues, total_headings):
     """

@@ -53,27 +53,34 @@ def write_list_info(file_path, list_info, format="csv"):
 # Validation Functions
 def validate_list_element(lst):
     """Validates a list element for proper structure and semantics."""
-    if lst.name not in ['ul', 'ol']:
-        # Non-standard list elements must use ARIA roles
-        if not lst.get('role') == 'list':
-            return "Non-standard list element is missing role='list' for accessibility."
-    if not lst.find_all('li'):
-        return "List is malformed: no <li> elements found."
+    match lst.name:
+        case 'ul' | 'ol':
+            # Standard list: Ensure it contains <li> elements
+            if not lst.find_all('li', recursive=False):
+                return "List is malformed: no direct <li> elements found."
+        case _:
+            # Non-standard list container must use role="list"
+            if lst.get('role') != 'list':
+                return "Non-standard list container is missing role='list' for accessibility."
+            if not lst.find_all('li', recursive=False):
+                return "ARIA list is malformed: no <li> elements found."
     return None
 
 def validate_list_nesting(lst):
     """Checks for improper nesting of lists."""
-    nested_lists = lst.find_all(['ul', 'ol'], recursive=True)
+    nested_lists = lst.find_all(['ul', 'ol'], recursive=False)
     for nested in nested_lists:
         if nested.find_parent(['ul', 'ol']) != lst:
-            return "Nested list is not properly contained within a parent list item."
+            return "Nested list is not properly contained within its parent list item."
     return None
 
 def validate_orphan_list_items(soup):
     """Checks for orphaned <li> elements outside a list container."""
-    orphans = soup.find_all('li', recursive=False)
-    if orphans:
-        return "Orphaned <li> elements found outside <ul> or <ol> containers."
+    orphaned_items = [
+        str(li) for li in soup.find_all('li') if not li.find_parent(['ul', 'ol'])
+    ]
+    if orphaned_items:
+        return f"Orphaned <li> elements found: {len(orphaned_items)} outside of <ul> or <ol>."
     return None
 
 # Confidence Calculation

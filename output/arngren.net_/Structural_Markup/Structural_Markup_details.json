@@ -1,0 +1,90 @@
+[
+    {
+        "Line Number": 20,
+        "Structural Tag": "div",
+        "HTML Snippet": "<div id=\"root\" style=\"position:absolute;width:3495px;height:2587px;\">\n<!--$end exclude$-->\n<div id=\"",
+        "Issue": "Structural element is missing an ARIA role for accessibility.",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 723
+    },
+    {
+        "Line Number": 22,
+        "Structural Tag": "div",
+        "HTML Snippet": "<div id=\"e0\" style=\"position:absolute;left:9;top:9;width:77;height:80;\"><a href=\"http://www.arngren.",
+        "Issue": "Div should not be used solely for structural purposes without meaningful content.",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 682
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Region",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Header region (<header> tag).",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Region",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Navigation region (<nav> tag).",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Region",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Main Content region (<main> tag).",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Region",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Footer region (<footer> tag).",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Region",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Aside region (<aside> tag).",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Landmark",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Banner landmark (role='banner').",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Landmark",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Navigation landmark (role='navigation').",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Landmark",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Main Content landmark (role='main').",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    },
+    {
+        "Line Number": "N/A",
+        "Structural Tag": "Landmark",
+        "HTML Snippet": "N/A",
+        "Issue": "Missing Content Info landmark (role='contentinfo').",
+        "Issue Code": "1.3.1 (f)",
+        "Count": 1
+    }
+]

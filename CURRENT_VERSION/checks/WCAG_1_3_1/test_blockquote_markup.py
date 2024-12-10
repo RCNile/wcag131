@@ -4,69 +4,57 @@ import json
 import pandas as pd
 from bs4 import BeautifulSoup
 
-"""
-WCAG 1.3.1 (d) Block-quote markup is used appropriately
-"""
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Function to write blockquote issues to a file
 def write_blockquote_info(file_path, blockquote_info, format="csv"):
     """Writes blockquote issues to a file in CSV, JSON, or Excel format."""
     logging.debug(f"Writing blockquote info to {file_path} in {format} format.")
     try:
+        rows = []
+        for blockquote in blockquote_info:
+            for issue in blockquote['issues']:
+                rows.append({
+                    'Blockquote Index': blockquote.get('blockquote_index', 'N/A'),
+                    'Blockquote HTML': blockquote.get('blockquote_html', 'N/A'),
+                    'Issue': issue.get('issue', 'N/A'),
+                    'Issue Code': "1.3.1 (d)",  # Adjust WCAG code as needed
+                    'Confidence Percentage': blockquote.get('confidence_percentage', 'N/A')
+                })
+
         if format == "csv":
             fieldnames = ['Blockquote Index', 'Blockquote HTML', 'Issue', 'Issue Code', 'Confidence Percentage']
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
-                for blockquote in blockquote_info:
-                    for issue in blockquote['issues']:
-                        writer.writerow({
-                            'Blockquote Index': blockquote.get('blockquote_index', 'N/A'),
-                            'Blockquote HTML': blockquote.get('blockquote_html', 'N/A'),
-                            'Issue': issue.get('issue', 'N/A'),
-                            'Issue Code': "1.3.1 (f)",  # Adjust WCAG code as needed
-                            'Confidence Percentage': blockquote.get('confidence_percentage', 'N/A')
-                        })
+                writer.writerows(rows)
         elif format == "json":
             with open(file_path, 'w', encoding='utf-8') as jsonfile:
-                json.dump(blockquote_info, jsonfile, indent=4)
+                json.dump(rows, jsonfile, indent=4)
         elif format == "excel":
-            rows = []
-            for blockquote in blockquote_info:
-                for issue in blockquote['issues']:
-                    rows.append({
-                        'Blockquote Index': blockquote.get('blockquote_index', 'N/A'),
-                        'Blockquote HTML': blockquote.get('blockquote_html', 'N/A'),
-                        'Issue': issue.get('issue', 'N/A'),
-                        'Issue Code': "1.3.1 (f)",  # Adjust WCAG code as needed
-                        'Confidence Percentage': blockquote.get('confidence_percentage', 'N/A')
-                    })
             df = pd.DataFrame(rows)
             df.to_excel(file_path, index=False)
         else:
             raise ValueError(f"Unsupported file format: {format}")
+
         logging.info(f"Blockquote info successfully written to {file_path}.")
         return True
     except Exception as e:
         logging.error(f"Error writing blockquote info to {file_path}: {e}")
         return False
 
-# Helper functions for validation
-validate_blockquote = lambda element: (
-    "Blockquote is missing a cite attribute or <footer> for source attribution."
-    if not element.get('cite') and not element.find('footer') else
-    None
-)
+def validate_blockquote(blockquote):
+    """Validates a blockquote for source attribution and accessibility."""
+    match {
+        "missing_cite": not blockquote.get('cite') and not blockquote.find('footer'),
+        "missing_aria": not blockquote.get('aria-labelledby') and not blockquote.get('aria-describedby')
+    }:
+        case {"missing_cite": True}:
+            return "Blockquote is missing a cite attribute or <footer> for source attribution."
+        case {"missing_aria": True}:
+            return "Blockquote is missing an aria-labelledby or aria-describedby for better accessibility."
+    return None
 
-validate_aria = lambda element: (
-    "Blockquote is missing an aria-labelledby or aria-describedby for better accessibility."
-    if not element.get('aria-labelledby') and not element.get('aria-describedby') else
-    None
-)
-
-# Confidence calculation function
 def calculate_confidence(blockquote_issues, total_checks):
     """Calculates confidence for blockquote accessibility compliance."""
     baseline_confidence = 95.0
@@ -76,9 +64,8 @@ def calculate_confidence(blockquote_issues, total_checks):
                 baseline_confidence -= 20
             case issue if "missing an aria" in issue:
                 baseline_confidence -= 15
-    return max(baseline_confidence, 0)
+    return max(baseline_confidence - (len(blockquote_issues) / total_checks) * 5, 0)
 
-# Main blockquote markup test function
 def test_blockquote_markup(html):
     """Tests for proper usage of blockquote elements in the HTML."""
     soup = BeautifulSoup(html, 'html.parser')
@@ -90,33 +77,28 @@ def test_blockquote_markup(html):
         return {"status": "Not Applicable", "details": [], "confidence": 100.0}
 
     issues = []
-
     for blockquote_index, blockquote in enumerate(blockquotes):
         blockquote_html = str(blockquote)
 
-        # Validate blockquote for source attribution and ARIA tags
-        blockquote_issues = [
-            validation_issue
-            for validation_issue in [
-                validate_blockquote(blockquote),
-                validate_aria(blockquote)
-            ]
-            if validation_issue is not None
-        ]
+        # Validate blockquote for issues
+        blockquote_issues = []
+        issue = validate_blockquote(blockquote)
+        if issue:
+            blockquote_issues.append({"issue": issue})
 
         # Calculate confidence for the current blockquote
-        confidence_percentage = calculate_confidence(blockquote_issues, len(blockquote_issues))
+        confidence_percentage = calculate_confidence(blockquote_issues, 1)
 
         if blockquote_issues:
             issues.append({
                 "blockquote_index": blockquote_index + 1,
                 "blockquote_html": blockquote_html,
-                "issues": [{"issue": issue} for issue in blockquote_issues],
+                "issues": blockquote_issues,
                 "confidence_percentage": confidence_percentage
             })
 
-            for issue in blockquote_issues:
-                logging.warning(f"Blockquote {blockquote_index + 1}: {issue}")
+            for issue_detail in blockquote_issues:
+                logging.warning(f"Blockquote {blockquote_index + 1}: {issue_detail['issue']}")
 
     # Calculate overall confidence
     overall_confidence = (

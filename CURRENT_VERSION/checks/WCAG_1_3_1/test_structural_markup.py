@@ -61,82 +61,143 @@ def write_structural_info(file_path, structural_info, format="csv"):
         logging.error(f"Error writing structural info to {file_path}: {e}")
         return False
 
-def validate_empty_structural(structural, content):
-    """Checks if a structural element is empty or lacks meaningful content."""
+def validate_structural_element(tag, content, structural):
+    """Validates structural elements for empty content, ARIA roles, and proper usage."""
+    issues = []
+
+    # Check if structural element is empty
     if not content and not structural.find_all(recursive=False):
-        return "Structural element is empty or lacks meaningful content."
-    return None
+        issues.append("Structural element is empty or lacks meaningful content.")
 
-def validate_structural_purpose(tag, content):
-    """Validates if the structural element's purpose is appropriate."""
-    if tag == 'section' and len(content.split()) < 10:
-        return "Section should contain a meaningful amount of content."
-    if tag == 'article' and len(content.split()) < 50:
-        return "Article should contain self-contained, detailed content."
-    if tag == 'div' and len(content.split()) < 5:
-        return "Div should not be used solely for structural purposes without meaningful content."
-    return None
+    # Check for purpose-specific validation
+    match tag:
+        case 'section' if len(content.split()) < 10:
+            issues.append("Section should contain a meaningful amount of content.")
+        case 'article' if len(content.split()) < 50:
+            issues.append("Article should contain self-contained, detailed content.")
+        case 'div' if len(content.split()) < 5:
+            issues.append("Div should not be used solely for structural purposes without meaningful content.")
 
-def validate_aria_role(structural):
-    """Checks if structural elements like <div> and <section> use ARIA roles appropriately."""
-    if structural.name in ['div', 'section'] and not structural.get('role'):
-        return "Structural element is missing an ARIA role for accessibility."
-    return None
+    # Check for ARIA roles in structural elements
+    if tag in ['div', 'section'] and not structural.get('role'):
+        issues.append("Structural element is missing an ARIA role for accessibility.")
+
+    return issues
+
+def validate_missing_regions(soup):
+    """Checks for missing important page regions."""
+    missing_regions = []
+    required_regions = {'header': 'Header', 'nav': 'Navigation', 'main': 'Main Content', 'footer': 'Footer', 'aside': 'Aside'}
+
+    for tag, region_name in required_regions.items():
+        if not soup.find(tag):
+            missing_regions.append(f"Missing {region_name} region (<{tag}> tag).")
+
+    return missing_regions
+
+def validate_missing_landmarks(soup):
+    """Checks for missing ARIA landmarks."""
+    required_landmarks = {'banner': 'Banner', 'navigation': 'Navigation', 'main': 'Main Content', 'contentinfo': 'Content Info'}
+    missing_landmarks = []
+
+    for role, landmark_name in required_landmarks.items():
+        if not soup.find(attrs={'role': role}):
+            missing_landmarks.append(f"Missing {landmark_name} landmark (role='{role}').")
+
+    return missing_landmarks
 
 def calculate_structural_confidence(issues, total_structures):
     """Calculates confidence for the structural markup test."""
     baseline_confidence = 100.0
+    severity_map = {
+        "empty or lacks meaningful content": 15,
+        "missing an aria role": 10,
+        "should contain meaningful content": 20,
+        "missing region": 15,
+        "missing landmark": 10
+    }
+
+    for issue in issues:
+        # Extract the issue text if it's a dictionary
+        issue_text = issue if isinstance(issue, str) else issue.get("Issue", "")
+        for key, weight in severity_map.items():
+            if key in issue_text.lower():
+                baseline_confidence -= weight
+
     if total_structures > 0:
-        confidence_penalty = (len(issues) / total_structures) * 50  # Max penalty: 50%
+        confidence_penalty = (len(issues) / total_structures) * 30  # Additional penalty for proportion of issues
         baseline_confidence -= confidence_penalty
+
     return max(baseline_confidence, 0)
 
+
 def test_structural_markup(html):
-    """Tests for proper usage of structural elements (article, section, div) in the HTML."""
-    soup = BeautifulSoup(html, 'html.parser')
-    structural_elements = soup.find_all(['article', 'section', 'div'])
-    logging.info(f"Found {len(structural_elements)} structural elements.")
+    """Tests for proper usage of structural elements in the HTML."""
+    try:
+        soup = BeautifulSoup(html, 'html.parser')
+        structural_elements = soup.find_all(['article', 'section', 'div'])
+        logging.info(f"Found {len(structural_elements)} structural elements.")
 
-    if not structural_elements:
-        logging.warning("No structural elements found. Markup not applicable.")
-        return {"status": "Not Applicable", "details": [], "confidence": 100.0}
+        issues = []
 
-    issues = []
+        for index, element in enumerate(structural_elements):
+            try:
+                tag = element.name
+                content = element.get_text(strip=True)
+                html_snippet = str(element)[:100]
+                line_number = getattr(element, "sourceline", "Unknown")
 
-    for index, structural in enumerate(structural_elements):
-        structural_content = structural.get_text(strip=True)
-        structural_html = str(structural)
+                # Check for issues
+                element_issues = validate_structural_element(tag, content, element)
 
-        # Validate structural element
-        structural_issues = [
-            validation_issue
-            for validation_issue in [
-                validate_empty_structural(structural, structural_content),
-                validate_structural_purpose(structural.name, structural_content),
-                validate_aria_role(structural)
-            ]
-            if validation_issue is not None
-        ]
+                if element_issues:
+                    for issue in element_issues:
+                        issues.append({
+                            "Line Number": line_number,
+                            "Structural Tag": tag,
+                            "HTML Snippet": html_snippet,
+                            "Issue": issue,
+                            "Issue Code": "1.3.1 (f)"
+                        })
 
-        if structural_issues:
-            issues.append({
-                "structural_index": index + 1,
-                "structural_tag": structural.name,
-                "structural_html": structural_html,
-                "issues": structural_issues,
-                "confidence_percentage": 0  # Placeholder, updated later
-            })
+            except Exception as e:
+                logging.error(f"Error processing structural element at index {index}: {e}")
 
-    # Calculate overall confidence
-    confidence = calculate_structural_confidence(issues, len(structural_elements))
+        # Additional validations for regions and landmarks
+        for validation_func, tag_name in [
+            (validate_missing_regions, "Region"),
+            (validate_missing_landmarks, "Landmark")
+        ]:
+            try:
+                missing_issues = validation_func(soup)
+                for issue in missing_issues:
+                    issues.append({
+                        "Line Number": "N/A",
+                        "Structural Tag": tag_name,
+                        "HTML Snippet": "N/A",
+                        "Issue": issue,
+                        "Issue Code": "1.3.1 (f)"
+                    })
+            except Exception as e:
+                logging.error(f"Error validating {tag_name}: {e}")
 
-    # Attach confidence to each issue
-    for issue in issues:
-        issue["confidence_percentage"] = confidence
+        logging.debug(f"Collected issues: {issues}")
+        confidence = calculate_structural_confidence(issues, len(structural_elements))
+        result = {
+            "status": "Malformed" if issues else "Passed",
+            "details": issues,
+            "confidence": confidence,
+            "issue_count": len(issues)
+        }
+        logging.debug(f"Test Result for Structural Markup: {result}")
+        return result
 
-    # Return structured results
-    return {
-        "status": "Malformed" if issues else "Passed",
-        "details": issues,
-        "confidence": confidence
-    }
+    except Exception as e:
+        logging.error(f"Error in structural test: {e}")
+        return {
+            "status": "Error",
+            "details": [{"Issue": "An unexpected error occurred.", "Issue Code": "1.3.1 (f)"}],
+            "confidence": 50.0,
+            "issue_count": 1
+        }
+

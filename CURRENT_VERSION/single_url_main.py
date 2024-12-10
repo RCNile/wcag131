@@ -1,8 +1,14 @@
 import os
 import subprocess
 from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font
+from collections import defaultdict
+import pandas as pd
+
 from playwright.async_api import async_playwright
 import asyncio
+import json
+import logging
 from checks.WCAG_1_3_1.test_blockquote_markup import test_blockquote_markup, write_blockquote_info
 from checks.WCAG_1_3_1.test_form_markup import test_form_markup, write_form_info
 from checks.WCAG_1_3_1.test_heading_markup import check_heading_markup, write_heading_info
@@ -11,24 +17,44 @@ from checks.WCAG_1_3_1.test_list_markup import test_list_markup, write_list_info
 from checks.WCAG_1_3_1.test_structural_markup import test_structural_markup, write_structural_info
 from checks.WCAG_1_3_1.test_table_markup import test_table_markup, write_table_info
 
-
 def create_results_workbook():
     """Initialize an Excel workbook with the desired column format."""
     workbook = Workbook()
     summary_sheet = workbook.active
     summary_sheet.title = "Summary"
-    # Column headers: URL, status, confidence score, and details for each WCAG test
     summary_sheet.append([
-        "Tested URL",
-        "Heading markup", "Heading Confidence", "Heading Details",
-        "List markup", "List Confidence", "List Details",
-        "Table markup", "Table Confidence", "Table Details",
-        "Block-quote markup", "Block-quote Confidence", "Block-quote Details",
-        "Landmarks", "Landmark Confidence", "Landmark Details",
-        "Structural markup", "Structural Confidence", "Structural Details",
-        "Forms", "Form Confidence", "Form Details",
+        "URL",
+        "Test Name",
+        "Pass/Fail/N/A",
+        "Confidence (%)",
+        "Issue Details",
     ])
     return workbook
+
+def save_json(file_path, data):
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as json_file:
+            json.dump(data, json_file, indent=4)
+        logging.info(f"JSON file saved: {file_path}")
+        return True
+    except Exception as e:
+        logging.error(f"Error saving JSON to {file_path}: {e}")
+        return False
+
+
+def add_section_header(sheet, test_name):
+    """Adds a greyed-out section header for a test type."""
+    header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+    header_font = Font(bold=True)
+    header_row = [None] * 5  # Adjust based on the number of columns
+    header_row[1] = test_name
+    row_idx = sheet.max_row + 1
+    sheet.append(header_row)
+    for cell in sheet[row_idx]:
+        if cell.value:
+            cell.fill = header_fill
+            cell.font = header_font
 
 
 async def fetch_html_content(url):
@@ -45,114 +71,188 @@ async def fetch_html_content(url):
         raise RuntimeError(f"Error fetching HTML content for {url}: {e}")
 
 
-def process_url(url, workbook, results_dir):
-    """Process a single URL and log detailed issues into Excel and CSV files for each test."""
+def save_results(base_dir, test_name, results):
+    """
+    Saves results in CSV and JSON formats.
+
+    Args:
+        base_dir (str): Directory to save results.
+        test_name (str): Name of the test.
+        results (list): List of dictionaries representing test results.
+    """
     try:
+        os.makedirs(base_dir, exist_ok=True)
+        csv_path = os.path.join(base_dir, f"{test_name}_details.csv")
+        json_path = os.path.join(base_dir, f"{test_name}_details.json")
+
+        # Save to CSV
+        pd.DataFrame(results).to_csv(csv_path, index=False)
+
+        # Save to JSON
+        with open(json_path, "w", encoding="utf-8") as json_file:
+            json.dump(results, json_file, indent=4)
+
+        print(f"Results saved for {test_name}: {csv_path}, {json_path}")
+    except Exception as e:
+        print(f"Failed to save results for {test_name}: {e}")
+
+
+def group_issues(details):
+    """
+    Groups issues by their `Issue` field and returns a list of dictionaries with counts.
+    
+    Args:
+        details (list): List of issue dictionaries.
+
+    Returns:
+        list: Grouped issues with counts.
+    """
+    if not details:
+        return []
+
+    grouped = defaultdict(list)
+    for detail in details:
+        issue_key = detail.get("Issue", "No issue description provided.")
+        grouped[issue_key].append(detail)
+
+    # Convert grouped issues to list format with counts
+    return [
+        {**occurrences[0], "Count": len(occurrences)}
+        for occurrences in grouped.values()
+    ]
+
+
+def process_url(url, workbook, results_dir):
+    """
+    Processes the given URL, performs tests, and saves results in separate folders for each test.
+
+    Args:
+        url (str): URL to process.
+        workbook (Workbook): Excel workbook for results.
+        results_dir (str): Directory to save results.
+
+    Returns:
+        str: Path to the summary Excel file.
+    """
+    try:
+        # Fetch HTML content
         html_content = asyncio.run(fetch_html_content(url))
-        if html_content is None:
-            print(f"Failed to retrieve HTML content for {url}.")
+        if not html_content:
+            print(f"Failed to fetch HTML content for {url}.")
             return
 
-        # Tests and their respective functions
-        tests_and_functions = {
-            "heading_markup": (check_heading_markup, write_heading_info),
-            "list_markup": (test_list_markup, write_list_info),
-            "table_markup": (test_table_markup, write_table_info),
-            "blockquote_markup": (test_blockquote_markup, write_blockquote_info),
-            "landmark_markup": (test_landmark_markup, write_landmark_info),
-            "structural_markup": (test_structural_markup, write_structural_info),
-            "form_markup": (test_form_markup, write_form_info),
+        summary_sheet = workbook["Summary"]
+
+        # Define tests and their associated functions
+        tests = {
+            "Heading Markup": (check_heading_markup, write_heading_info),
+            "List Markup": (test_list_markup, write_list_info),
+            "Table Markup": (test_table_markup, write_table_info),
+            "Blockquote Markup": (test_blockquote_markup, write_blockquote_info),
+            "Landmark Markup": (test_landmark_markup, write_landmark_info),
+            "Structural Markup": (test_structural_markup, write_structural_info),
+            "Form Markup": (test_form_markup, write_form_info),
         }
 
-        # Prepare a row for the current URL
-        row = [url]  # Initialize row with the URL
+        # Create folders for each test before running them
+        test_folders = {}
+        for test_name in tests.keys():
+            test_folder = os.path.join(results_dir, test_name.replace(" ", "_"))
+            os.makedirs(test_folder, exist_ok=True)
+            test_folders[test_name] = test_folder
 
-        for test_name, (test_function, write_function) in tests_and_functions.items():
+        # Run each test and save results
+        for test_name, (test_function, write_function) in tests.items():
             try:
-                # Run the test function
+                # Add section header in Excel
+                add_section_header(summary_sheet, test_name)
+
+                # Run the test
                 result = test_function(html_content)
+                logging.debug(f"Test Result for {test_name}: {result}")
 
-                # Extract and append the test status
-                test_status = result.get("status", "N/A")
-                row.append(test_status)
-
-                # Extract and append the overall confidence score
-                overall_confidence = result.get("confidence", 100.0)
-                row.append(f"{overall_confidence:.2f}%")
-
-                # Extract and append formatted details
+                # Extract test results
+                status = result.get("status", "N/A")
+                confidence = result.get("confidence", 100.0)
                 details = result.get("details", [])
-                issue_text = "\n".join(f"Line {d.get('Line Number', 'N/A')}: {d.get('Issue', 'N/A')}" for d in details) if details else "No issues found"
-                row.append(issue_text)
 
-                # Write CSV for this test
-                if details:
-                    csv_output_dir = os.path.join(results_dir, test_name)
-                    os.makedirs(csv_output_dir, exist_ok=True)
-                    csv_file_path = os.path.join(csv_output_dir, f"{test_name}_details.csv")
+                # Group issues for better organization
+                grouped_results = group_issues(details)
 
-                    # Call the correct write function for this test
-                    write_function(csv_file_path, details)
-                    print(f"Saved CSV for {test_name} in {csv_file_path}")
+                # Add grouped results to the Excel summary
+                if grouped_results:
+                    for item in grouped_results:
+                        summary_sheet.append([
+                            url,
+                            test_name,
+                            status,
+                            f"{confidence:.2f}%",
+                            item["Issue"] + f" (Occurred {item['Count']} times)"
+                        ])
+                else:
+                    summary_sheet.append([url, test_name, status, f"{confidence:.2f}%", "No issues found."])
 
-            except Exception as test_error:
-                print(f"Error during {test_name} for {url}: {test_error}")
-                row.extend(["Error", "0.00%", "Error details unavailable"])
+                # Save results to test-specific folder
+                test_folder = test_folders[test_name]
+                csv_file_path = os.path.join(test_folder, f"{test_name.replace(' ', '_')}_details.csv")
+                json_file_path = os.path.join(test_folder, f"{test_name.replace(' ', '_')}_details.json")
 
-        # Append the row to the Excel summary sheet
-        summary_sheet = workbook["Summary"]
-        summary_sheet.append(row)
+                try:
+                    # Save CSV and JSON
+                    write_function(csv_file_path, grouped_results)
+                    save_json(json_file_path, grouped_results)
+                    logging.info(f"Saved results for {test_name} in {test_folder}")
+                except Exception as file_write_error:
+                    logging.error(f"Error saving results for {test_name}: {file_write_error}")
 
-        # Save workbook after processing the URL
-        results_file = os.path.join(results_dir, "wcag1.3.1_summary.xlsx")
-        workbook.save(results_file)
+            except Exception as e:
+                # Log and record test-specific errors
+                error_message = f"Error processing {test_name} for {url}: {e}"
+                logging.error(error_message)
+                summary_sheet.append([url, test_name, "Error", "0.00%", error_message])
 
-        print(f"Completed processing {url}. Results saved in {results_file}.")
-        return results_file
+        # Save the Excel summary file
+        excel_path = os.path.join(results_dir, "wcag1.3.1_summary.xlsx")
+        workbook.save(excel_path)
+        return excel_path
 
     except Exception as e:
-        print(f"Unexpected error for {url}: {e}")
+        logging.error(f"Unexpected error processing {url}: {e}")
+
 
 
 def open_results_file(file_path):
     """Open the results file in the default application."""
     try:
-        if os.name == "nt":  # Windows
+        if os.name == "nt":
             os.startfile(file_path)
-        elif os.name == "posix":  # macOS or Linux
+        elif os.name == "posix":
             subprocess.run(["open" if "darwin" in os.uname().sysname.lower() else "xdg-open", file_path])
         else:
             print(f"Cannot determine how to open files on this platform.")
     except Exception as e:
         print(f"Failed to open the file {file_path}: {e}")
 
-
 def main():
-    # Prompt user for a single URL
-    url = input("Enter the URL to test: ").strip()
+    url = None
+    while not url:
+        url = input("Enter the URL to test: ").strip()
+        if not url:
+            print("No URL provided. Please enter a valid URL.")
 
-    if not url:
-        print("No URL provided. Exiting.")
-        return
-
-    # Generate the results folder structure
     base_results_dir = "output"
     os.makedirs(base_results_dir, exist_ok=True)
 
-    # Create a subdirectory for the specific URL
     url_safe_name = url.replace("http://", "").replace("https://", "").replace("/", "_")
     url_results_dir = os.path.join(base_results_dir, url_safe_name)
     os.makedirs(url_results_dir, exist_ok=True)
 
-    # Prepare Excel workbook
     workbook = create_results_workbook()
 
-    # Process the single URL
     print(f"\nTesting URL: {url}")
     results_file = process_url(url, workbook, url_results_dir)
 
     if results_file:
-        # Automatically open the results file
         open_results_file(results_file)
 
     print(f"\nTest completed. Results saved in {results_file}.")
